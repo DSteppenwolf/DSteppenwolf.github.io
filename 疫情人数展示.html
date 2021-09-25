@@ -1,0 +1,628 @@
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>疫情确诊人数展示</title>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.19/esri/themes/light/main.css">
+  <script src="https://js.arcgis.com/4.19/"></script>
+
+  <style>
+    #containerDiv {
+      /* padding: 10px; */
+      text-align: center;
+      box-shadow: 0;
+    }
+
+    #sliderDiv {
+      height: 100px;
+    }
+
+
+    .labels {
+      padding: 5px;
+    }
+
+    html,
+    body {
+      padding: 0;
+      margin: 0;
+      height: 90%;
+      width: 100%;
+    }
+
+    #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    }
+
+    #sliderContainer {
+      bottom: 0;
+      height: 1%;
+      width: 100%;
+      text-align: center;
+    }
+  </style>
+  <script id="highest-temp-arcade" type="arcgis/arcade">
+      var highest = -Infinity;
+      var ignoreFields = [ "OBJECTID", "x", "y", "Range" ];
+      for (var att in $feature){
+        var value = $feature[att];
+        if( typeof(value) == 'Number' && IndexOf(ignoreFields, att) == -1){
+          highest = IIF(value > highest, value, highest);
+        }
+      }
+      return highest;
+    </script>
+
+  <script id="lowest-temp-arcade" type="arcgis/arcade">
+      var lowest = Infinity;
+      var ignoreFields = [ "OBJECTID", "x", "y", "Range" ];
+      for (var att in $feature){
+        var value = $feature[att];
+        if( typeof(value) == 'Number' && IndexOf(ignoreFields, att) == -1){
+          lowest = IIF(value < lowest, value, lowest);
+        }
+      }
+      return lowest;
+    </script>
+
+  <script id="size-arcade" type="arcgis/arcade">
+      var AbsTEMP = Abs($feature.F1880)
+        var vs = $view.scale
+        var TempSize = when(
+          AbsTEMP > 5, 35,
+          AbsTEMP > 4, 30,
+          AbsTEMP > 2.5, 25,
+          AbsTEMP > 1, 20,
+          AbsTEMP > 0.5, 15,
+          AbsTEMP > 0.01, 12,
+          AbsTEMP < 0.01, 10,
+          8
+        )
+        when(
+          vs >=37000000, TempSize,
+          vs >=18500000, 2 + TempSize,
+          vs >=9300000, 4 + TempSize,
+          vs >=4700000, 6 + TempSize,
+          vs >=2000000, 8 + TempSize,
+          10 + TempSize
+        );
+    </script>
+
+
+  <script>
+
+    require(["esri/config",
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/widgets/Locate",
+      "esri/widgets/Track",
+      "esri/Graphic",
+      "esri/layers/FeatureLayer",
+      "esri/widgets/Sketch",
+      "esri/layers/GraphicsLayer",
+      "esri/widgets/LayerList",
+      "esri/layers/MapImageLayer",
+      "esri/layers/TileLayer",
+      "esri/renderers/ClassBreaksRenderer",
+      "esri/widgets/Expand",
+      "esri/widgets/Legend",
+      "esri/tasks/QueryTask",
+      "esri/tasks/support/Query",
+      "dojo/dom",
+      "esri/symbols/SimpleLineSymbol",
+      "esri/symbols/SimpleFillSymbol",
+      "esri/Color",
+      "esri/smartMapping/statistics/histogram",
+      "esri/smartMapping/statistics/summaryStatistics",
+      "esri/widgets/Histogram",
+      "esri/widgets/Slider",
+      "esri/core/watchUtils"],
+      function (esriConfig,
+        Map,
+        MapView,
+        Locate,
+        Track,
+        Graphic,
+        FeatureLayer,
+        Sketch,
+        GraphicsLayer,
+        LayerList,
+        MapImageLayer,
+        TileLayer,
+        ClassBreaksRenderer,
+        Expand,
+        Legend,
+        QueryTask,
+        Query,
+        dom,
+        SimpleLineSymbol,
+        SimpleFillSymbol,
+        Color,
+        histogram,
+        summaryStatistics,
+        Histogram,
+        Slider,
+        watchUtils
+      ) {
+        let timefield = "F1_24";
+        let querytime = "1月24日";
+        const less0 = {
+          type: "simple-fill", // autocasts as new SimpleFillSymbol()
+          color: "#D3D39F",
+          style: "solid",
+          outline: {
+            width: 0.2,
+            color: [255, 255, 255, 0.5]
+          }
+        };
+
+        const less100 = {
+          type: "simple-fill", // autocasts as new SimpleFillSymbol()
+          color: "#D3D36D",
+          style: "solid",
+          outline: {
+            width: 0.2,
+            color: [255, 255, 255, 0.5]
+          }
+        };
+
+        const less500 = {
+          type: "simple-fill", // autocasts as new SimpleFillSymbol()
+          color: "#C98D2C",
+          style: "solid",
+          outline: {
+            width: 0.2,
+            color: [255, 255, 255, 0.5]
+          }
+        };
+
+        const more500 = {
+          type: "simple-fill", // autocasts as new SimpleFillSymbol()
+          color: "#DF0101",
+          style: "solid",
+          outline: {
+            width: 0.2,
+            color: [255, 255, 255, 0.5]
+          }
+        };
+
+        const more1000 = {
+          type: "simple-fill", // autocasts as new SimpleFillSymbol()
+          color: "#B40404",
+          style: "solid",
+          outline: {
+            width: 0.2,
+            color: [255, 255, 255, 0.5]
+          }
+        };
+
+        const more1500 = {
+          type: "simple-fill", // autocasts as new SimpleFillSymbol()
+          color: "#8A0808",
+          style: "solid",
+          outline: {
+            width: 0.2,
+            color: [255, 255, 255, 0.5]
+          }
+        };
+
+        const renderer = {
+          type: "class-breaks", // autocasts as new ClassBreaksRenderer()
+          field: timefield,
+          legendOptions: {
+            title: "人数"
+          },
+          classBreakInfos: [
+            {
+              minValue: 0,
+              maxValue: 1,
+              symbol: less0,
+              label: "确诊人数 < 10"
+            },
+            {
+              minValue: 0,
+              maxValue: 99,
+              symbol: less100,
+              label: "确诊人数 < 100"
+            },
+            {
+              minValue: 100,
+              maxValue: 499,
+              symbol: less500,
+              label: "确诊人数 100-500"
+            },
+            {
+              minValue: 500,
+              maxValue: 999,
+              symbol: more500,
+              label: "确诊人数 500-1000"
+            },
+            {
+              minValue: 1000,
+              maxValue: 1499,
+              symbol: more1000,
+              label: "确诊人数 1000-1500"
+            },
+            {
+              minValue: 1500,
+              maxValue: 70000,
+              symbol: more1500,
+              label: "确诊人数 > 1500"
+            }
+          ]
+        };
+
+        esriConfig.apiKey = "AAPK9d6bec0fedf448bc8144c015b4c04b45XgIbxk40kBuf73N_Py63wgFLXuT0h2DHC1U4oYGeY3IiXujKnOf_RsdXPMjdWXRH";
+
+
+        const map = new Map({
+          basemap: "arcgis-dark-gray" // Basemap layer
+        });
+
+        const view = new MapView({
+          map: map,
+          center: [107.125, 35],
+          zoom: 3.5, // scale: 72223.819286
+          container: "viewDiv",
+          constraints: {
+            snapToZoom: false
+          }
+        });
+
+
+        // 定位//
+        const locate = new Locate({
+          view: view,
+          useHeadingEnabled: false,
+          goToOverride: function (view, options) {
+            options.target.scale = 1500;
+            return view.goTo(options.target);
+          }
+        });
+        view.ui.add(locate, "top-left");
+        ////////
+
+        // 轨迹//
+        const track = new Track({
+          view: view,
+          graphic: new Graphic({
+            symbol: {
+              type: "simple-marker",
+              size: "12px",
+              color: "green",
+              outline: {
+                color: "#efefef",
+                width: "1.5px"
+              }
+            }
+          }),
+          useHeadingEnabled: false
+        });
+        view.ui.add(track, "top-left");
+        ///////////
+        let month = "1月";
+
+        month = timefield.substring(1, 2) + "月";
+
+        let day = "24日";
+
+        day = timefield.substring(3, 5) + "日";
+        querytime = month + day;
+
+        //弹出窗口
+        let template = {
+          // autocasts as new PopupTemplate()
+          title: "{province} 确诊人数",
+          content: [
+            {
+              type: "fields",
+              fieldInfos: [
+                {
+                  fieldName: timefield,
+                  label: timefield.substring(1,2)+"月"+timefield.substring(3,5)+"日" + "确诊人数"
+                }
+              ]
+            }
+          ]
+        };
+        ////////////////
+
+        //绘制要素工具//
+        const graphicsLayer = new GraphicsLayer({
+          title: "绘制要素"
+        });
+
+        view.when(() => {
+          const sketch = new Sketch({
+            layer: graphicsLayer,
+            view: view,
+            // graphic will be selected as soon as it is created
+            creationMode: "update"
+          });
+          sketch.on("create",
+            function (event) {
+              if (event.state === "complete") {
+                queryTask(event.graphic.geometry);
+              }
+
+            });
+          view.ui.add(sketch, "top-right");
+        });
+        /////////////
+
+
+        //空间查询（QueryTask）
+        function queryTask(geometry) {
+          // console.log(geometry);
+          var china = "https://services3.arcgis.com/U26uBjSD32d7xvm2/ArcGIS/rest/services/chinaconfirmed_new/FeatureServer/0?token=RbS0gKn5UVW9ZsownKB83aZtBu9mvhzSWoCGtHYqp4cP6Q1kPUjbcFK_0TPc0OiNvLi5A6sJlKj8xmtOEI62OZJ2YxQwdK_gszvhk_1EKQobONlM6g1fKOw2M6SoCdjTVyNdiw8OE7AqzZNa4S6SK_whCphnVfH8sOItOgzC8E00QJCjmMgt7ZwLWeTX0w5P0IzsgTXCphDoJpvnyWXrbWRXV8R0g7kl8QCb03HQwUFylDjCjq9bm8U3TNUyCZz2WcqgOQ8NYBXHVUQaokr_WQ..";
+          var qTask = new QueryTask({
+            url: china //全国矢量
+          });
+          var query = new Query({
+            returnGeometry: true,
+            outFields: ["*"],
+            //结果要素包含的属性字段  
+          });
+          query.geometry = geometry;
+          //console.log(query.geometry);
+          //空间参考信息
+          query.outSpatialReference = map.spatialReference;
+          //查询的标准，此处代表和geometry相交的图形都要返回
+          query.spatialRelationship = Query.SPATIAL_REL_INTERSECTS;
+          //执行空间查询
+          qTask.execute(query).then(showQueryResult);
+        }
+
+        function showQueryResult(queryResult) {
+          console.log(queryResult)
+          //创建线符号					
+          var lineSymbol = new SimpleLineSymbol(SimpleLineSymbol.STYLE_DASH, new Color([0, 255, 0, 0.5]));
+          //创建面符号
+          var fill = new SimpleFillSymbol(SimpleFillSymbol.STYLE_SOLID, new Color([0, 255, 0]));
+          if (queryResult.features.length == 0) {
+            dom.byId("divShowResult").innerHTML = "查询结果为空！";
+            return;
+          };
+
+          let month = "1月";
+
+          month = timefield.substring(1, 2) + "月";
+
+          let day = "24日";
+
+          day = timefield.substring(3, 5) + "日";
+          querytime = month + day;
+
+
+
+
+
+          var htmls = "查询2020年" + querytime + "确诊人数\n结果：\n";
+          if (queryResult.features.length >= 1) {
+            //htmls = htmls + "<table style=\"width: 900px\">"; //创建一个表，使用了转义字符
+            //htmls = htmls + "<tr><td>名称</td></tr>"; //创建数据行
+            for (var i = 0; i < queryResult.features.length; i++) {
+              //得到graphic	
+              var graphic = queryResult.features[i];
+              //给图形赋予符号	
+              console.log(graphic);
+              //graphic.setSymbol(fill);  //api3.×
+              graphic.symbol = fill;		//api 4.x				
+              //添加到地图从而实现高亮效果						
+              view.graphics.add(graphic);	//api 4.x
+
+              //map.graphics.add(graphic); //api3.×
+
+              //获得名称信息，此处应和shp的属性表对应						
+              var ptName = graphic.attributes["province"];
+              var confirmed = graphic.attributes[timefield];
+              htmls += ptName + "  确诊人数为" + confirmed + "\n";
+              //htmls = htmls + "<td><a href=\"#\">" + ptName + "</a></td>";
+              //htmls = htmls + "</tr>";
+            }
+            //htmls = htmls + "</table>";
+            //dom.byId("divShowResult").innerHTML = htmls;
+            alert(htmls);
+          }
+        }
+
+
+        // 要素图层//
+        var featureLayer = new FeatureLayer({
+          title: "疫情确诊数据",
+          //url: "https://services9.arcgis.com/S990USlhfgpUmWKm/ArcGIS/rest/services/chinaprovinceconfirm/FeatureServer/0?token=0ILQssZAwjbEyAKgiw4Ic1tuw8dWlD96eKcfGtjcxP39PtJvs_zS0gBMF-RpEm3qGmmD2EfH5KnOmU6s5Isai2zngv8VDN3zlEQmjJKo2hKczI-E6IcgXrQwR65Z8d9PLV7q3ZFbkeCxkzEBGQ5NyhKfRob4FfFTcT0nWeuhh5VuULWUi1hpGmC9dihwnIqFxCyF-X5_l7VJ31zwxpNbjDlNQJ8mSgKkjObqV3cj9cb3EJak6GWXhhq2PrzlIkR8ecAfhVdgTOLzCNwi_K4Fkg..",
+          url: "https://services3.arcgis.com/U26uBjSD32d7xvm2/ArcGIS/rest/services/chinaconfirmed_new/FeatureServer/0?token=RbS0gKn5UVW9ZsownKB83aZtBu9mvhzSWoCGtHYqp4cP6Q1kPUjbcFK_0TPc0OiNvLi5A6sJlKj8xmtOEI62OZJ2YxQwdK_gszvhk_1EKQobONlM6g1fKOw2M6SoCdjTVyNdiw8OE7AqzZNa4S6SK_whCphnVfH8sOItOgzC8E00QJCjmMgt7ZwLWeTX0w5P0IzsgTXCphDoJpvnyWXrbWRXV8R0g7kl8QCb03HQwUFylDjCjq9bm8U3TNUyCZz2WcqgOQ8NYBXHVUQaokr_WQ..",
+          popupTemplate: template,
+          renderer: renderer
+        });
+        ////////////
+
+        //MapImageLayer（未添加）//
+        var MImageLayer = new MapImageLayer({
+          //url:
+        });
+        ////////////////
+
+        //瓦片图层//
+        var Tlayer = new TileLayer({
+          url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/World_Street_Map/MapServer"
+        });
+        //map.add(Tlayer);
+        //放在上面显示要素图层
+        map.add(featureLayer);
+        //////////
+
+        //////////////////////
+
+        const legend = new Legend({
+          view: view
+        });
+
+        view.ui.add(legend, "bottom-right");
+
+        //LayerList//
+        const llist = new LayerList({
+          view: view
+        });
+        view.ui.add(llist, {
+          position: "top-left"
+        });
+        //////////////////
+
+        const slider = new Slider({
+          min: 1,
+          max: 60,
+          values: [1],
+          visibleElements: {
+            labels: true,
+            rangeLabels: true
+          },
+          labelInputsEnabled: true,
+          precision: 0,
+          steps: 1,
+          container: "sliderDiv"
+        });
+
+        // When the user changes the slider's value,
+        // change the renderer and histogram to reflect
+        // data corresponding to the year indicated on the slider
+
+        slider.on(["thumb-change", "thumb-drag"], function (event) {
+          updatetimefield(event.value);
+          updateRenderer(event.value);
+          updateYearDisplay(event.value);
+
+        });
+
+        let points = null;
+        let lv = null;
+
+        // Query all the features in the layer. These will by used
+        // for client-side queries as the user slides the thumb of the slider
+
+        view.whenLayerView(featureLayer).then(function (layerView) {
+          lv = layerView;
+          watchUtils.whenFalseOnce(layerView, "updating", function () {
+            return layerView.queryFeatures().then(function (response) {
+              points = response.features;
+              const year = slider.values[0];
+              updateRenderer(year, layerView);
+
+
+            }).catch(function (e) {
+              console.error(e);
+            });
+          });
+        }).catch(function (e) {
+          console.error(e);
+        });
+
+        // Updates the underlying data value driving the expression
+        // based on the given year provided by the slider
+
+        function updateRenderer(value) {
+          if (value < 9) {
+            featureLayer.renderer.field = "F1_" + (23 + value).toString();
+          }
+          else if (value >= 9 && value < 38) {
+            featureLayer.renderer.field = "F2_" + (value - 8).toString();
+          }
+          else if (value >= 38) {
+            featureLayer.renderer.field = "F3_" + (value - 37).toString();
+          }
+
+          // featureLayer.popupTemplate.fieldName = timefield;
+          // featureLayer.popupTemplate.label = timefield;
+
+
+          featureLayer.refreshInterval = 10;
+        }
+
+        function updateYearDisplay(year) {
+          const yearElement = document.getElementById("yearDiv");
+          if (year < 9) {
+            yearElement.innerText = "1月" + (23 + year).toString() + "日";
+
+            featureLayer.popupTemplate.content = [
+              {
+                type: "fields",
+                fieldInfos: [
+                  {
+                    fieldName: timefield,
+                    label: "1月" + (23 + year).toString() + "日" + "确诊人数"
+                  }
+                ]
+              }
+            ];
+          }
+          else if (year >= 9 && year < 38) {
+            yearElement.innerText = "2月" + (year - 8).toString() + "日";
+            featureLayer.popupTemplate.content = [
+              {
+                type: "fields",
+                fieldInfos: [
+                  {
+                    fieldName: timefield,
+                    label: "2月" + (year - 8).toString() + "日" + "确诊人数"
+                  }
+                ]
+              }
+            ];
+
+          }
+          else if (year >= 38) {
+            yearElement.innerText = "3月" + (year - 37).toString() + "日";
+            featureLayer.popupTemplate.content = [
+              {
+                type: "fields",
+                fieldInfos: [
+                  {
+                    fieldName: timefield,
+                    label: "3月" + (year - 37).toString() + "日" + "确诊人数"
+                  }
+                ]
+              }
+            ];
+          }
+          //console.log(timefield);
+        }
+
+        function updatetimefield(year) {
+          if (year < 9) {
+            timefield = "F1_" + (23 + year).toString();
+          }
+          else if (year >= 9 && year < 38) {
+            timefield = "F2_" + (year - 8).toString();
+          }
+          else if (year >= 38) {
+            timefield = "F3_" + (year - 37).toString();
+          }
+          //console.log(timefield);
+        }
+
+
+      });
+  </script>
+</head>
+
+<body>
+  <div>
+    <div id="viewDiv">
+    </div>
+    <div class="esri-widget">
+      <div id="title" class="esri-widget">
+        <h3 style="text-align: center;">确诊人口数 (<span id="yearDiv">1月24日</span>)</h3>
+      </div>
+      <div id="sliderContainer" class="esri-widget">
+        <div id="sliderDiv"></div>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>
